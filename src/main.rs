@@ -1,11 +1,18 @@
 pub mod tokens;
 use crate::tokens::*;
+use std::env;
+use std::fs::File;
+use std::io::prelude::*;
 
+// for argument in env::args()
 fn main() {
-    // let s = "(/ (* 3 2) (+ 1 2))";
-    let s = "((if (= 1 2) + -) 2 1)";
-    let e = Expr::token_tree(s);
-    println!("Token tree: {:?}", e);
-    let result = e.evaluate();
+    assert_eq!(env::args().len(), 2);
+    let args: Vec<_> = env::args().collect();
+    let mut file = File::open(args[1].to_string()).unwrap();
+    let mut code = String::new();
+    file.read_to_string(&mut code).unwrap();
+
+    let e = Expr::token_tree(code.as_str());
+    let result = e.exec();
     println!("{:?}", result);
 }

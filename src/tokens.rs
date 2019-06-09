@@ -1,6 +1,7 @@
+use std::collections::HashMap;
 use std::ops::{Add, Div, Mul, Not, Sub};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub(crate) enum Expr {
     Add(Box<Expr>, Box<Expr>),
     Sub(Box<Expr>, Box<Expr>),
@@ -12,6 +13,9 @@ pub(crate) enum Expr {
     Bool(bool),
     If(Box<Expr>, Box<Expr>, Box<Expr>),
     Str(String),
+    Let(Box<Expr>, Box<Expr>, Box<Expr>),
+    For(Box<Expr>, Box<Expr>, Box<Expr>, Box<Expr>, Box<Expr>),
+    Empty,
 }
 
 impl Add for Expr {
@@ -87,38 +91,83 @@ impl Not for Expr {
 }
 
 impl Expr {
-    pub fn evaluate(&self) -> Self {
+    fn get_num(&self) -> i32 {
+        if let Expr::Number(x) = self {
+            *x
+        } else {
+            panic!("Nah")
+        }
+    }
+    fn get_str(&self) -> String {
+        if let Expr::Str(x) = self {
+            x.to_string()
+        } else {
+            panic!("Nah")
+        }
+    }
+
+    pub fn exec(&self) -> Self {
+        let mut variables: HashMap<String, Expr> = HashMap::new();
+        self.evaluate(&mut variables)
+    }
+
+    fn evaluate(&self, mut variables: &mut HashMap<String, Expr>) -> Self {
         match self {
-            Expr::Add(x, y) => x.evaluate() + y.evaluate(),
-            Expr::Sub(x, y) => x.evaluate() - y.evaluate(),
-            Expr::Mul(x, y) => x.evaluate() * y.evaluate(),
-            Expr::Div(x, y) => x.evaluate() / y.evaluate(),
-            Expr::Equal(x, y) => Expr::Bool(x.evaluate() == y.evaluate()),
-            Expr::Not(x) => !x.evaluate(),
+            Expr::Add(x, y) => x.evaluate(variables) + y.evaluate(variables),
+            Expr::Sub(x, y) => x.evaluate(variables) - y.evaluate(variables),
+            Expr::Mul(x, y) => x.evaluate(variables) * y.evaluate(variables),
+            Expr::Div(x, y) => x.evaluate(variables) / y.evaluate(variables),
+            Expr::Equal(x, y) => Expr::Bool(x.evaluate(variables) == y.evaluate(variables)),
+            Expr::Not(x) => !x.evaluate(variables),
             Expr::Number(x) => Expr::Number(*x),
             Expr::Bool(x) => Expr::Bool(*x),
-            Expr::Str(x) => Expr::Str(x.to_string()),
+            Expr::Str(x) => {
+                let p = variables.get(x);
+                if let Some(e) = p {
+                    e.clone().evaluate(&mut variables)
+                } else {
+                    Expr::Str(x.to_string())
+                }
+            }
+            Expr::Let(name, x, next) => {
+                let result = x.evaluate(variables);
+                // let var = name.evaluate(variables);
+                let var_name = name.get_str();
+                variables.insert(var_name, result);
+                next.evaluate(variables)
+            }
+            Expr::Empty => Expr::Empty,
             Expr::If(b, x, y) => {
-                if let Expr::Bool(bb) = b.evaluate() {
+                if let Expr::Bool(bb) = b.evaluate(variables) {
                     if bb {
-                        x.evaluate()
+                        x.evaluate(variables)
                     } else {
-                        y.evaluate()
+                        y.evaluate(variables)
                     }
                 } else {
                     panic!("'If': bad evaluation")
                 }
             }
-            _ => unimplemented!(),
+            Expr::For(var, begin, end, core, next) => {
+                let inf = begin.get_num();
+                let sup = end.get_num();
+                for i in inf..sup {
+                    variables.insert(var.get_str(), Expr::Number(i));
+                    core.evaluate(variables);
+                }
+                next.evaluate(variables)
+            }
         }
     }
 
     /// Returns the token tree associated with the string
     pub fn token_tree(s: &str) -> Self {
-        dbg!(s);
+        // dbg!(s);
+        if s.chars().next().is_none() {
+            return Expr::Empty;
+        }
         if s.chars().next() != Some('(') {
             // If it is a number
-            println!("s: {}", s);
             let x = s.trim().parse::<i32>();
             if x.is_ok() {
                 Expr::Number(x.unwrap())
@@ -127,59 +176,53 @@ impl Expr {
             }
         } else {
             // If it is an expression
-            // let str_expressions: Vec<&str> = s[1..s.len() - 1].split(' ').collect();
             let str_expressions: Vec<String> = get_expressions(&s[1..s.len() - 1].trim());
-            // let str_expressions: Vec<String> =
-            //     get_expressions(s.get(1..s.len() - 1).unwrap().to_string()); //[1..s.len() - 1]);
-            println!("str_expressions: {:?}", str_expressions);
-            let mut command = str_expressions[0].as_str();
+            let command = str_expressions[0].as_str();
             if str_expressions[0].chars().next() == Some('(') {
-                // TODO
-                let e = Expr::token_tree(&get_expressions(&str_expressions[0])[0]);
-                let x = e.evaluate();
-                println!("x: {:?}", x);
-                match x {
-                    Expr::Str(c) => match c.as_str() {
-                        "+" => command = "+",
-                        "-" => command = "-",
-                        "*" => command = "*",
-                        "/" => command = "/",
-                        _ => panic!("oopsie"),
-                    },
-                    _ => panic!("so, this was possible ..."),
-                }
-                // command = x;
-                // unimplemented!()
-            }
-            match command {
-                "+" => Expr::Add(
-                    Box::new(Expr::token_tree(str_expressions[1].as_str())),
-                    Box::new(Expr::token_tree(str_expressions[2].as_str())),
-                ),
-                "-" => Expr::Sub(
-                    Box::new(Expr::token_tree(str_expressions[1].as_str())),
-                    Box::new(Expr::token_tree(str_expressions[2].as_str())),
-                ),
-                "*" => Expr::Mul(
-                    Box::new(Expr::token_tree(str_expressions[1].as_str())),
-                    Box::new(Expr::token_tree(str_expressions[2].as_str())),
-                ),
-                "/" => Expr::Div(
-                    Box::new(Expr::token_tree(str_expressions[1].as_str())),
-                    Box::new(Expr::token_tree(str_expressions[2].as_str())),
-                ),
-                "=" => Expr::Equal(
-                    Box::new(Expr::token_tree(str_expressions[1].as_str())),
-                    Box::new(Expr::token_tree(str_expressions[2].as_str())),
-                ),
-                "!" => Expr::Not(Box::new(Expr::token_tree(str_expressions[1].as_str()))),
-                "if" => Expr::If(
-                    Box::new(Expr::token_tree(str_expressions[1].as_str())),
-                    Box::new(Expr::token_tree(str_expressions[2].as_str())),
-                    Box::new(Expr::token_tree(str_expressions[3].as_str())),
-                ),
+                panic!("Syntax not accepted ...");
+            } else {
+                match command {
+                    "+" => Expr::Add(
+                        Box::new(Expr::token_tree(str_expressions[1].as_str())),
+                        Box::new(Expr::token_tree(str_expressions[2].as_str())),
+                    ),
+                    "-" => Expr::Sub(
+                        Box::new(Expr::token_tree(str_expressions[1].as_str())),
+                        Box::new(Expr::token_tree(str_expressions[2].as_str())),
+                    ),
+                    "*" => Expr::Mul(
+                        Box::new(Expr::token_tree(str_expressions[1].as_str())),
+                        Box::new(Expr::token_tree(str_expressions[2].as_str())),
+                    ),
+                    "/" => Expr::Div(
+                        Box::new(Expr::token_tree(str_expressions[1].as_str())),
+                        Box::new(Expr::token_tree(str_expressions[2].as_str())),
+                    ),
+                    "=" => Expr::Equal(
+                        Box::new(Expr::token_tree(str_expressions[1].as_str())),
+                        Box::new(Expr::token_tree(str_expressions[2].as_str())),
+                    ),
+                    "!" => Expr::Not(Box::new(Expr::token_tree(str_expressions[1].as_str()))),
+                    "if" => Expr::If(
+                        Box::new(Expr::token_tree(str_expressions[1].as_str())),
+                        Box::new(Expr::token_tree(str_expressions[2].as_str())),
+                        Box::new(Expr::token_tree(str_expressions[3].as_str())),
+                    ),
+                    "let" => Expr::Let(
+                        Box::new(Expr::token_tree(str_expressions[1].as_str())),
+                        Box::new(Expr::token_tree(str_expressions[2].as_str())),
+                        Box::new(Expr::token_tree(str_expressions[3].as_str())),
+                    ),
+                    "for" => Expr::For(
+                        Box::new(Expr::token_tree(str_expressions[1].as_str())),
+                        Box::new(Expr::token_tree(str_expressions[2].as_str())),
+                        Box::new(Expr::token_tree(str_expressions[3].as_str())),
+                        Box::new(Expr::token_tree(str_expressions[4].as_str())),
+                        Box::new(Expr::token_tree(str_expressions[5].as_str())),
+                    ),
 
-                _ => unimplemented!(),
+                    _ => Expr::Empty,
+                }
             }
         }
     }
@@ -211,6 +254,9 @@ fn get_expressions(s: &str) -> Vec<String> {
         }
     }
     v.push(current_expr);
+    for _ in 0..5 {
+        v.push(String::from(""));
+    }
     v
 }
 
