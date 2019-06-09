@@ -1,0 +1,7 @@
+[package]
+name = "rusil"
+version = "0.1.0"
+authors = ["Quentin Guilloteau <Quentin.Guilloteau@grenoble-inp.org>"]
+edition = "2018"
+
+[dependencies]
