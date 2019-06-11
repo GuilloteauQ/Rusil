@@ -57,6 +57,7 @@ impl Not for Expr {
 }
 
 impl Expr {
+    /// Returns the type of the expression
     fn get_type(&self) -> Type {
         match *self {
             Expr::Number(_) => Type::Number,
@@ -65,6 +66,8 @@ impl Expr {
             _ => Type::Expression,
         }
     }
+    /// Returns the number encapsulated in the expression
+    /// If it is not a number, returns a TypeError
     fn get_num(&self, expr_str: String) -> Result<i32, LangError> {
         if let Expr::Number(x) = self {
             Ok(*x)
@@ -76,6 +79,8 @@ impl Expr {
             ))
         }
     }
+    /// Returns the string encapsulated in the expression
+    /// If it is not a string, returns a TypeError
     fn get_str(&self, expr_str: String) -> Result<String, LangError> {
         if let Expr::Str(x) = self {
             Ok(x.to_string())
@@ -88,6 +93,8 @@ impl Expr {
         }
     }
 
+    /// Takes 2 Numbers and returns the number op(x, y)
+    /// If type error returns a TypeError
     fn arith_operation<F: Fn(i32, i32) -> i32>(
         self,
         other: Expr,
@@ -112,6 +119,7 @@ impl Expr {
             ))
         }
     }
+    /// Execute the program represented by the token tree
     pub fn exec(&self) -> Result<Self, LangError> {
         let mut variables: HashMap<String, Expr> = HashMap::new();
         self.evaluate(&mut variables)
@@ -152,7 +160,7 @@ impl Expr {
                     ))
                 }
             }
-            Expr::Not(x, s) => Ok((!x.evaluate(variables)?)?),
+            Expr::Not(x, _s) => Ok((!x.evaluate(variables)?)?),
             Expr::Number(x) => Ok(Expr::Number(*x)),
             Expr::Bool(x) => Ok(Expr::Bool(*x)),
             Expr::Str(x) => {
@@ -171,14 +179,19 @@ impl Expr {
             }
             Expr::Empty => Ok(Expr::Empty),
             Expr::If(b, x, y, s) => {
-                if let Expr::Bool(bb) = b.evaluate(variables)? {
+                let bool_evaluated = b.evaluate(variables)?;
+                if let Expr::Bool(bb) = bool_evaluated {
                     if bb {
                         x.evaluate(variables)
                     } else {
                         y.evaluate(variables)
                     }
                 } else {
-                    panic!("'If': bad evaluation")
+                    Err(LangError::new_type_error(
+                        Type::Bool,
+                        bool_evaluated.get_type(),
+                        s.to_string(),
+                    ))
                 }
             }
             Expr::For(var, begin, end, core, next, s) => {
@@ -313,63 +326,84 @@ mod tests_tokens {
 
     #[test]
     fn test_add() {
-        assert_eq!(Expr::token_tree("(+ 1 1)").exec(), Expr::Number(2));
+        assert_eq!(Expr::token_tree("(+ 1 1)").exec().unwrap(), Expr::Number(2));
     }
 
     #[test]
     fn test_sub() {
-        assert_eq!(Expr::token_tree("(- 1 1)").exec(), Expr::Number(0));
+        assert_eq!(Expr::token_tree("(- 1 1)").exec().unwrap(), Expr::Number(0));
     }
 
     #[test]
     fn test_mul() {
-        assert_eq!(Expr::token_tree("(* 2 1)").exec(), Expr::Number(2));
+        assert_eq!(Expr::token_tree("(* 2 1)").exec().unwrap(), Expr::Number(2));
     }
 
     #[test]
     fn test_div() {
-        assert_eq!(Expr::token_tree("(/ 4 2)").exec(), Expr::Number(2));
+        assert_eq!(Expr::token_tree("(/ 4 2)").exec().unwrap(), Expr::Number(2));
     }
 
     #[test]
     fn test_equal_false() {
-        assert_eq!(Expr::token_tree("(= 4 2)").exec(), Expr::Bool(false));
+        assert_eq!(
+            Expr::token_tree("(= 4 2)").exec().unwrap(),
+            Expr::Bool(false)
+        );
     }
 
     #[test]
     fn test_equal_true() {
-        assert_eq!(Expr::token_tree("(= 4 4)").exec(), Expr::Bool(true));
+        assert_eq!(
+            Expr::token_tree("(= 4 4)").exec().unwrap(),
+            Expr::Bool(true)
+        );
     }
 
     #[test]
     fn test_not_false() {
-        assert_eq!(Expr::token_tree("(! (= 4 4))").exec(), Expr::Bool(false));
+        assert_eq!(
+            Expr::token_tree("(! (= 4 4))").exec().unwrap(),
+            Expr::Bool(false)
+        );
     }
 
     #[test]
     fn test_not_true() {
-        assert_eq!(Expr::token_tree("(! (= 4 2))").exec(), Expr::Bool(true));
+        assert_eq!(
+            Expr::token_tree("(! (= 4 2))").exec().unwrap(),
+            Expr::Bool(true)
+        );
     }
 
     #[test]
     fn test_if_true() {
-        assert_eq!(Expr::token_tree("(if (= 2 2) 2 4)").exec(), Expr::Number(2));
+        assert_eq!(
+            Expr::token_tree("(if (= 2 2) 2 4)").exec().unwrap(),
+            Expr::Number(2)
+        );
     }
 
     #[test]
     fn test_if_false() {
-        assert_eq!(Expr::token_tree("(if (= 1 2) 2 4)").exec(), Expr::Number(4));
+        assert_eq!(
+            Expr::token_tree("(if (= 1 2) 2 4)").exec().unwrap(),
+            Expr::Number(4)
+        );
     }
 
     #[test]
     fn test_let() {
-        assert_eq!(Expr::token_tree("(let x 2 x)").exec(), Expr::Number(2));
+        assert_eq!(
+            Expr::token_tree("(let x 2 x)").exec().unwrap(),
+            Expr::Number(2)
+        );
     }
 
     #[test]
     fn test_for() {
         assert_eq!(
-            Expr::token_tree("(for i 1 10 (i) i)").exec(),
+            Expr::token_tree("(for i 1 10 (i) i)").exec().unwrap(),
             Expr::Number(9)
         );
     }
