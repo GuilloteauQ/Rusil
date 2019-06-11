@@ -18,6 +18,7 @@ pub(crate) enum Expr {
     If(Box<Expr>, Box<Expr>, Box<Expr>, String),
     Str(String),
     Let(Box<Expr>, Box<Expr>, Box<Expr>, String),
+    Set(Box<Expr>, Box<Expr>, Box<Expr>, String),
     For(
         Box<Expr>,
         Box<Expr>,
@@ -174,7 +175,21 @@ impl Expr {
             Expr::Let(name, x, next, s) => {
                 let result = x.evaluate(variables)?;
                 let var_name = name.get_str(s.to_string())?;
-                variables.insert(var_name, result);
+
+                let previous_value = variables.insert(var_name.clone(), result);
+                let next_result = next.evaluate(variables);
+
+                let _ = match previous_value {
+                    Some(p) => variables.insert(var_name, p),
+                    None => variables.remove(&var_name),
+                };
+                next_result
+            }
+            Expr::Set(name, x, next, s) => {
+                let result = x.evaluate(variables)?;
+                let var_name = name.get_str(s.to_string())?;
+
+                let _ = variables.insert(var_name.clone(), result);
                 next.evaluate(variables)
             }
             Expr::Empty => Ok(Expr::Empty),
@@ -269,6 +284,13 @@ impl Expr {
                         Box::new(Expr::token_tree(str_expressions[3].as_str().trim())),
                         s.to_string(),
                     ),
+                    "set" => Expr::Set(
+                        Box::new(Expr::token_tree(str_expressions[1].as_str().trim())),
+                        Box::new(Expr::token_tree(str_expressions[2].as_str().trim())),
+                        Box::new(Expr::token_tree(str_expressions[3].as_str().trim())),
+                        s.to_string(),
+                    ),
+
                     "for" => Expr::For(
                         Box::new(Expr::token_tree(str_expressions[1].as_str().trim())),
                         Box::new(Expr::token_tree(str_expressions[2].as_str().trim())),
@@ -405,6 +427,16 @@ mod tests_tokens {
         assert_eq!(
             Expr::token_tree("(for i 1 10 (i) i)").exec().unwrap(),
             Expr::Number(9)
+        );
+    }
+
+    #[test]
+    fn test_scope() {
+        assert_eq!(
+            Expr::token_tree("(let y 0 (let x 2 (let x 4 (set y x y))))")
+                .exec()
+                .unwrap(),
+            Expr::Number(4)
         );
     }
 
