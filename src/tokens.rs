@@ -1,4 +1,4 @@
-use crate::errors::TypeError;
+use crate::errors::type_errors::TypeError;
 use crate::types::*;
 use std;
 use std::collections::HashMap;
