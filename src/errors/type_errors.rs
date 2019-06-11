@@ -11,7 +11,7 @@ pub(crate) struct TypeError {
 impl TypeError {
     pub fn new(expected_type: Type, given_type: Type, faulty_expression: String) -> Self {
         let message = format!(
-            "\n>>> TypeError:\n\n\t\"{}\"\n\n\tExpected: {:?}\n\tFound: {:?}\n",
+            "\n>>> TypeError:\n\n\t\x1B[31m{}\x1B[39m\n\n\tExpected: {:?}\n\tFound: {:?}\n",
             faulty_expression, expected_type, given_type
         );
         TypeError { message }

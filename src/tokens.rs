@@ -1,4 +1,4 @@
-use crate::errors::type_errors::TypeError;
+use crate::errors::*; // type_errors::TypeError;
 use crate::types::*;
 use std;
 use std::collections::HashMap;
@@ -41,13 +41,13 @@ impl fmt::Display for Expr {
 }
 
 impl Not for Expr {
-    type Output = Result<Expr, TypeError>;
+    type Output = Result<Expr, LangError>;
 
-    fn not(self) -> Result<Expr, TypeError> {
+    fn not(self) -> Result<Expr, LangError> {
         if let Expr::Bool(x) = self {
             Ok(Expr::Bool(!x))
         } else {
-            Err(TypeError::new(
+            Err(LangError::new_type_error(
                 Type::Bool,
                 self.get_type(),
                 String::from(""),
@@ -65,18 +65,26 @@ impl Expr {
             _ => Type::Expression,
         }
     }
-    fn get_num(&self, expr_str: String) -> Result<i32, TypeError> {
+    fn get_num(&self, expr_str: String) -> Result<i32, LangError> {
         if let Expr::Number(x) = self {
             Ok(*x)
         } else {
-            Err(TypeError::new(Type::Number, self.get_type(), expr_str))
+            Err(LangError::new_type_error(
+                Type::Number,
+                self.get_type(),
+                expr_str,
+            ))
         }
     }
-    fn get_str(&self, expr_str: String) -> Result<String, TypeError> {
+    fn get_str(&self, expr_str: String) -> Result<String, LangError> {
         if let Expr::Str(x) = self {
             Ok(x.to_string())
         } else {
-            Err(TypeError::new(Type::Str, self.get_type(), expr_str))
+            Err(LangError::new_type_error(
+                Type::Str,
+                self.get_type(),
+                expr_str,
+            ))
         }
     }
 
@@ -85,23 +93,31 @@ impl Expr {
         other: Expr,
         op: F,
         expr_str: String,
-    ) -> Result<Expr, TypeError> {
+    ) -> Result<Expr, LangError> {
         if let Expr::Number(x) = self {
             if let Expr::Number(y) = other {
                 Ok(Expr::Number(op(x, y)))
             } else {
-                Err(TypeError::new(Type::Number, other.get_type(), expr_str))
+                Err(LangError::new_type_error(
+                    Type::Number,
+                    other.get_type(),
+                    expr_str,
+                ))
             }
         } else {
-            Err(TypeError::new(Type::Number, self.get_type(), expr_str))
+            Err(LangError::new_type_error(
+                Type::Number,
+                self.get_type(),
+                expr_str,
+            ))
         }
     }
-    pub fn exec(&self) -> Result<Self, TypeError> {
+    pub fn exec(&self) -> Result<Self, LangError> {
         let mut variables: HashMap<String, Expr> = HashMap::new();
         self.evaluate(&mut variables)
     }
 
-    fn evaluate(&self, mut variables: &mut HashMap<String, Expr>) -> Result<Self, TypeError> {
+    fn evaluate(&self, mut variables: &mut HashMap<String, Expr>) -> Result<Self, LangError> {
         match self {
             Expr::Add(x, y, s) => x.evaluate(variables)?.arith_operation(
                 y.evaluate(variables)?,
@@ -129,7 +145,7 @@ impl Expr {
                 if x_result.get_type() == y_result.get_type() {
                     Ok(Expr::Bool(x_result == y_result))
                 } else {
-                    Err(TypeError::new(
+                    Err(LangError::new_type_error(
                         x_result.get_type(),
                         y_result.get_type(),
                         s.to_string(),
