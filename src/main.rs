@@ -1,6 +1,10 @@
+pub mod errors;
 pub mod tokens;
+pub mod types;
+use crate::errors::*;
 use crate::tokens::*;
 use std::env;
+use std::error::Error;
 use std::fs::File;
 use std::io::prelude::*;
 
@@ -13,6 +17,10 @@ fn main() {
     file.read_to_string(&mut code).unwrap();
 
     let e = Expr::token_tree(code.as_str());
+    // println!("Tree: {:?}", e);
     let result = e.exec();
-    println!("{:?}", result);
+    match result {
+        Ok(r) => println!("{}", r),
+        Err(e) => println!("{}", e.description()),
+    }
 }
