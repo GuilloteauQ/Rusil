@@ -1,0 +1,1 @@
+(let y 2 (let x (for i 0 10 (set y (+ y y)) y) i) i)

@@ -1,1 +1,1 @@
-(let x 1 (let y 1 (for i 1 10 (let z (+ x y) (set x y (set y z))) y) y) y)
+((let x 1) (let y 1) (for i 1 10 ((let z (+ x y)) (set x y) (set y z))) y)

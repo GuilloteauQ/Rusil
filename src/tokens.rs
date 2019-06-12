@@ -254,6 +254,7 @@ impl Expr {
             // If it is an expression
             let str_expressions: Vec<String> =
                 get_expressions(&trimed_command_exp[1..trimed_command_exp.len() - 1]);
+            println!("EXPRESSIONS: {:?}", str_expressions);
             let command = str_expressions[0].as_str();
             // if str_expressions[0].chars().next() == Some('(') {
             //     panic!("Syntax not accepted ...");
@@ -331,11 +332,13 @@ fn get_expressions(s: &str) -> Vec<String> {
     let mut chars = p.chars();
     let mut in_expr = false;
     let mut par_count = 0;
+    let mut just_pushed = false;
 
     while let Some(c) = chars.next() {
-        if c == ' ' && !in_expr {
+        if c == ' ' && !in_expr && !just_pushed {
             v.push(current_expr.trim().to_string());
             current_expr = String::new();
+            just_pushed = false;
         } else if c == '(' {
             par_count += 1;
             current_expr.push(c);
@@ -347,9 +350,11 @@ fn get_expressions(s: &str) -> Vec<String> {
             if !in_expr {
                 v.push(current_expr.trim().to_string());
                 current_expr = String::new();
+                just_pushed = true;
             }
         } else {
             current_expr.push(c);
+            just_pushed = false;
         }
     }
     v.push(current_expr.trim().to_string());
@@ -431,7 +436,7 @@ mod tests_tokens {
     #[test]
     fn test_let() {
         assert_eq!(
-            Expr::token_tree("(let x 2 x)").exec().unwrap(),
+            Expr::token_tree("((let x 2) x)").exec().unwrap(),
             Expr::Number(2)
         );
     }
@@ -439,19 +444,8 @@ mod tests_tokens {
     #[test]
     fn test_for() {
         assert_eq!(
-            Expr::token_tree("(for i 1 10 (i) i)").exec().unwrap(),
-            Expr::Number(9)
+            Expr::token_tree("(for i 1 10 (i))").exec().unwrap(),
+            Expr::Empty
         );
     }
-
-    #[test]
-    fn test_scope() {
-        assert_eq!(
-            Expr::token_tree("(let y 0 (let x 2 (let x 4 (set y x y))))")
-                .exec()
-                .unwrap(),
-            Expr::Number(4)
-        );
-    }
-
 }
