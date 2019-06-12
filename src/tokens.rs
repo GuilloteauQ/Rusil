@@ -14,6 +14,12 @@ pub(crate) enum Expr {
     Div(Box<Expr>, Box<Expr>, String),
     Number(i32),
     Equal(Box<Expr>, Box<Expr>, String),
+    GreaterThan(Box<Expr>, Box<Expr>, String),
+    GreaterEqualThan(Box<Expr>, Box<Expr>, String),
+    LessThan(Box<Expr>, Box<Expr>, String),
+    LessEqualThan(Box<Expr>, Box<Expr>, String),
+    And(Box<Expr>, Box<Expr>, String),
+    Or(Box<Expr>, Box<Expr>, String),
     Not(Box<Expr>, String),
     Bool(bool),
     If(Box<Expr>, Box<Expr>, Box<Expr>, String),
@@ -77,6 +83,18 @@ impl Expr {
             ))
         }
     }
+    fn get_bool(&self, expr_str: String) -> Result<bool, LangError> {
+        if let Expr::Bool(x) = self {
+            Ok(*x)
+        } else {
+            Err(LangError::new_type_error(
+                Type::Bool,
+                self.get_type(),
+                expr_str,
+            ))
+        }
+    }
+
     /// Returns the string encapsulated in the expression
     /// If it is not a string, returns a TypeError
     fn get_str(&self, expr_str: String) -> Result<String, LangError> {
@@ -93,30 +111,17 @@ impl Expr {
 
     /// Takes 2 Numbers and returns the number op(x, y)
     /// If type error returns a TypeError
-    fn arith_operation<F: Fn(i32, i32) -> i32>(
+    fn arith_operation<T, FOP: Fn(T, T) -> Expr, FGET: Fn(Expr) -> Result<T, LangError>>(
         self,
         other: Expr,
-        op: F,
-        expr_str: String,
+        op: FOP,
+        get_f: FGET,
     ) -> Result<Expr, LangError> {
-        if let Expr::Number(x) = self {
-            if let Expr::Number(y) = other {
-                Ok(Expr::Number(op(x, y)))
-            } else {
-                Err(LangError::new_type_error(
-                    Type::Number,
-                    other.get_type(),
-                    expr_str,
-                ))
-            }
-        } else {
-            Err(LangError::new_type_error(
-                Type::Number,
-                self.get_type(),
-                expr_str,
-            ))
-        }
+        let x = get_f(self)?;
+        let y = get_f(other)?;
+        Ok(op(x, y))
     }
+
     /// Execute the program represented by the token tree
     pub fn exec(&self) -> Result<Self, LangError> {
         let mut variables: HashMap<String, Expr> = HashMap::new();
@@ -132,37 +137,60 @@ impl Expr {
         match self {
             Expr::Add(x, y, s) => x.evaluate(variables, functions)?.arith_operation(
                 y.evaluate(variables, functions)?,
-                |u, v| u + v,
-                s.to_string(),
+                |u, v| Expr::Number(u + v),
+                |x| x.get_num(s.to_string()),
             ),
             Expr::Sub(x, y, s) => x.evaluate(variables, functions)?.arith_operation(
                 y.evaluate(variables, functions)?,
-                |u, v| u - v,
-                s.to_string(),
+                |u, v| Expr::Number(u - v),
+                |x| x.get_num(s.to_string()),
             ),
             Expr::Mul(x, y, s) => x.evaluate(variables, functions)?.arith_operation(
                 y.evaluate(variables, functions)?,
-                |u, v| u * v,
-                s.to_string(),
+                |u, v| Expr::Number(u * v),
+                |x| x.get_num(s.to_string()),
             ),
             Expr::Div(x, y, s) => x.evaluate(variables, functions)?.arith_operation(
                 y.evaluate(variables, functions)?,
-                |u, v| u / v,
-                s.to_string(),
+                |u, v| Expr::Number(u / v),
+                |x| x.get_num(s.to_string()),
             ),
-            Expr::Equal(x, y, s) => {
-                let x_result = x.evaluate(variables, functions)?;
-                let y_result = y.evaluate(variables, functions)?;
-                if x_result.get_type() == y_result.get_type() {
-                    Ok(Expr::Bool(x_result == y_result))
-                } else {
-                    Err(LangError::new_type_error(
-                        x_result.get_type(),
-                        y_result.get_type(),
-                        s.to_string(),
-                    ))
-                }
-            }
+            Expr::Equal(x, y, s) => x.evaluate(variables, functions)?.arith_operation(
+                y.evaluate(variables, functions)?,
+                |u, v| Expr::Bool(u == v),
+                |x| x.get_num(s.to_string()),
+            ),
+            Expr::GreaterThan(x, y, s) => x.evaluate(variables, functions)?.arith_operation(
+                y.evaluate(variables, functions)?,
+                |u, v| Expr::Bool(u > v),
+                |x| x.get_num(s.to_string()),
+            ),
+            Expr::LessThan(x, y, s) => x.evaluate(variables, functions)?.arith_operation(
+                y.evaluate(variables, functions)?,
+                |u, v| Expr::Bool(u < v),
+                |x| x.get_num(s.to_string()),
+            ),
+            Expr::GreaterEqualThan(x, y, s) => x.evaluate(variables, functions)?.arith_operation(
+                y.evaluate(variables, functions)?,
+                |u, v| Expr::Bool(u >= v),
+                |x| x.get_num(s.to_string()),
+            ),
+            Expr::LessEqualThan(x, y, s) => x.evaluate(variables, functions)?.arith_operation(
+                y.evaluate(variables, functions)?,
+                |u, v| Expr::Bool(u <= v),
+                |x| x.get_num(s.to_string()),
+            ),
+            Expr::And(x, y, s) => x.evaluate(variables, functions)?.arith_operation(
+                y.evaluate(variables, functions)?,
+                |u, v| Expr::Bool(u && v),
+                |x| x.get_bool(s.to_string()),
+            ),
+            Expr::Or(x, y, s) => x.evaluate(variables, functions)?.arith_operation(
+                y.evaluate(variables, functions)?,
+                |u, v| Expr::Bool(u || v),
+                |x| x.get_bool(s.to_string()),
+            ),
+
             Expr::Not(x, _s) => Ok((!x.evaluate(variables, functions)?)?),
             Expr::Number(x) => Ok(Expr::Number(*x)),
             Expr::Bool(x) => Ok(Expr::Bool(*x)),
@@ -358,6 +386,37 @@ impl Expr {
                         Box::new(Expr::token_tree(str_expressions[2].as_str().trim())),
                         trimed_command_exp.to_string(),
                     ),
+                    ">" => Expr::GreaterThan(
+                        Box::new(Expr::token_tree(str_expressions[1].as_str().trim())),
+                        Box::new(Expr::token_tree(str_expressions[2].as_str().trim())),
+                        trimed_command_exp.to_string(),
+                    ),
+                    ">=" => Expr::GreaterEqualThan(
+                        Box::new(Expr::token_tree(str_expressions[1].as_str().trim())),
+                        Box::new(Expr::token_tree(str_expressions[2].as_str().trim())),
+                        trimed_command_exp.to_string(),
+                    ),
+                    "<" => Expr::LessThan(
+                        Box::new(Expr::token_tree(str_expressions[1].as_str().trim())),
+                        Box::new(Expr::token_tree(str_expressions[2].as_str().trim())),
+                        trimed_command_exp.to_string(),
+                    ),
+                    "<=" => Expr::LessEqualThan(
+                        Box::new(Expr::token_tree(str_expressions[1].as_str().trim())),
+                        Box::new(Expr::token_tree(str_expressions[2].as_str().trim())),
+                        trimed_command_exp.to_string(),
+                    ),
+                    "&&" => Expr::And(
+                        Box::new(Expr::token_tree(str_expressions[1].as_str().trim())),
+                        Box::new(Expr::token_tree(str_expressions[2].as_str().trim())),
+                        trimed_command_exp.to_string(),
+                    ),
+                    "||" => Expr::Or(
+                        Box::new(Expr::token_tree(str_expressions[1].as_str().trim())),
+                        Box::new(Expr::token_tree(str_expressions[2].as_str().trim())),
+                        trimed_command_exp.to_string(),
+                    ),
+
                     "!" => Expr::Not(
                         Box::new(Expr::token_tree(str_expressions[1].as_str().trim())),
                         trimed_command_exp.to_string(),
