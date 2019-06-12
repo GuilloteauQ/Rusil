@@ -1,1 +1,1 @@
-(let x 1 (for i 1 11 (set x (* x i)) x) x)
+((let x 1) (for i 1 11 (let x (* x i))) x)
