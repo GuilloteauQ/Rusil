@@ -189,8 +189,15 @@ impl Expr {
                 let result = x.evaluate(variables)?;
                 let var_name = name.get_str(s.to_string())?;
 
-                let _ = variables.insert(var_name.clone(), result);
-                next.evaluate(variables)
+                let opt_previous = variables.insert(var_name.clone(), result);
+                if opt_previous.is_none() {
+                    Err(LangError::new_undefined_variable_error(
+                        var_name,
+                        s.to_string(),
+                    ))
+                } else {
+                    next.evaluate(variables)
+                }
             }
             Expr::Empty => Ok(Expr::Empty),
             Expr::If(b, x, y, s) => {
@@ -212,11 +219,20 @@ impl Expr {
             Expr::For(var, begin, end, core, next, s) => {
                 let inf = begin.get_num(s.to_string())?;
                 let sup = end.get_num(s.to_string())?;
+                let var_name = var.get_str(s.to_string())?;
+
+                let previous_value = variables.insert(var_name.clone(), Expr::Number(inf));
                 for i in inf..sup {
-                    variables.insert(var.get_str(s.to_string())?, Expr::Number(i));
+                    variables.insert(var_name.clone(), Expr::Number(i));
                     core.evaluate(variables)?;
                 }
-                next.evaluate(variables)
+                let next_result = next.evaluate(variables);
+
+                let _ = match previous_value {
+                    Some(p) => variables.insert(var_name, p),
+                    None => variables.remove(&var_name),
+                };
+                next_result
             }
         }
     }

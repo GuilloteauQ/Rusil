@@ -17,7 +17,7 @@ fn main() {
     file.read_to_string(&mut code).unwrap();
 
     let e = Expr::token_tree(code.as_str());
-    // println!("Tree: {:?}", e);
+    println!("Tree: {:?}", e);
     let result = e.exec();
     match result {
         Ok(r) => println!("{}", r),
