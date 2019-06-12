@@ -17,15 +17,9 @@ pub(crate) enum Expr {
     Bool(bool),
     If(Box<Expr>, Box<Expr>, Box<Expr>, String),
     Str(String),
-    Let(Box<Expr>, Box<Expr>, Box<Expr>, String),
-    For(
-        Box<Expr>,
-        Box<Expr>,
-        Box<Expr>,
-        Box<Expr>,
-        Box<Expr>,
-        String,
-    ),
+    Let(Box<Expr>, Box<Expr>, String),
+    Sequence(Vec<Box<Expr>>, String),
+    For(Box<Expr>, Box<Expr>, Box<Expr>, Box<Expr>, String),
     Empty,
 }
 
@@ -171,13 +165,24 @@ impl Expr {
                     Ok(Expr::Str(x.to_string()))
                 }
             }
-            Expr::Let(name, x, next, s) => {
+            Expr::Let(name, x, s) => {
                 let result = x.evaluate(variables)?;
                 let var_name = name.get_str(s.to_string())?;
                 variables.insert(var_name, result);
-                next.evaluate(variables)
+                Ok(Expr::Empty)
             }
             Expr::Empty => Ok(Expr::Empty),
+            Expr::Sequence(v, s) => {
+                let mut result = None;
+                for e in v {
+                    result = Some(e.evaluate(variables)?);
+                }
+                if result.is_none() {
+                    Ok(Expr::Empty)
+                } else {
+                    Ok(result.unwrap())
+                }
+            }
             Expr::If(b, x, y, s) => {
                 let bool_evaluated = b.evaluate(variables)?;
                 if let Expr::Bool(bb) = bool_evaluated {
@@ -194,25 +199,27 @@ impl Expr {
                     ))
                 }
             }
-            Expr::For(var, begin, end, core, next, s) => {
+            Expr::For(var, begin, end, core, s) => {
                 let inf = begin.get_num(s.to_string())?;
                 let sup = end.get_num(s.to_string())?;
                 for i in inf..sup {
                     variables.insert(var.get_str(s.to_string())?, Expr::Number(i));
                     core.evaluate(variables)?;
                 }
-                next.evaluate(variables)
+                Ok(Expr::Empty)
             }
         }
     }
 
     /// Returns the token tree associated with the string
     pub fn token_tree(s: &str) -> Self {
-        // dbg!(s);
-        if s.chars().next().is_none() {
+        // dblet p = s.replace("\n", " ");
+        let p = s.replace("\n", " ");
+        let trimed_command_exp = p.trim();
+        if trimed_command_exp.chars().next().is_none() {
             return Expr::Empty;
         }
-        if s.chars().next() != Some('(') {
+        if trimed_command_exp.chars().next() != Some('(') {
             // If it is a number
             let x = s.trim().parse::<i32>();
             if x.is_ok() {
@@ -222,65 +229,64 @@ impl Expr {
             }
         } else {
             // If it is an expression
-            let str_expressions: Vec<String> = get_expressions(&s[1..s.len() - 1].trim());
+            let str_expressions: Vec<String> =
+                get_expressions(&trimed_command_exp[1..trimed_command_exp.len() - 1]);
             let command = str_expressions[0].as_str();
-            if str_expressions[0].chars().next() == Some('(') {
-                panic!("Syntax not accepted ...");
-            } else {
-                match command {
+            // if str_expressions[0].chars().next() == Some('(') {
+            //     panic!("Syntax not accepted ...");
+            // } else {
+            match command {
                     "+" => Expr::Add(
                         Box::new(Expr::token_tree(str_expressions[1].as_str().trim())),
                         Box::new(Expr::token_tree(str_expressions[2].as_str().trim())),
-                        s.to_string(),
+                        trimed_command_exp.to_string(),
                     ),
                     "-" => Expr::Sub(
                         Box::new(Expr::token_tree(str_expressions[1].as_str().trim())),
                         Box::new(Expr::token_tree(str_expressions[2].as_str().trim())),
-                        s.to_string(),
+                        trimed_command_exp.to_string(),
                     ),
                     "*" => Expr::Mul(
                         Box::new(Expr::token_tree(str_expressions[1].as_str().trim())),
                         Box::new(Expr::token_tree(str_expressions[2].as_str().trim())),
-                        s.to_string(),
+                        trimed_command_exp.to_string(),
                     ),
                     "/" => Expr::Div(
                         Box::new(Expr::token_tree(str_expressions[1].as_str().trim())),
                         Box::new(Expr::token_tree(str_expressions[2].as_str().trim())),
-                        s.to_string(),
+                        trimed_command_exp.to_string(),
                     ),
                     "=" => Expr::Equal(
                         Box::new(Expr::token_tree(str_expressions[1].as_str().trim())),
                         Box::new(Expr::token_tree(str_expressions[2].as_str().trim())),
-                        s.to_string(),
+                        trimed_command_exp.to_string(),
                     ),
                     "!" => Expr::Not(
                         Box::new(Expr::token_tree(str_expressions[1].as_str().trim())),
-                        s.to_string(),
+                        trimed_command_exp.to_string(),
                     ),
                     "if" => Expr::If(
                         Box::new(Expr::token_tree(str_expressions[1].as_str().trim())),
                         Box::new(Expr::token_tree(str_expressions[2].as_str().trim())),
                         Box::new(Expr::token_tree(str_expressions[3].as_str().trim())),
-                        s.to_string(),
+                        trimed_command_exp.to_string(),
                     ),
                     "let" => Expr::Let(
                         Box::new(Expr::token_tree(str_expressions[1].as_str().trim())),
                         Box::new(Expr::token_tree(str_expressions[2].as_str().trim())),
-                        Box::new(Expr::token_tree(str_expressions[3].as_str().trim())),
-                        s.to_string(),
+                        trimed_command_exp.to_string(),
                     ),
                     "for" => Expr::For(
                         Box::new(Expr::token_tree(str_expressions[1].as_str().trim())),
                         Box::new(Expr::token_tree(str_expressions[2].as_str().trim())),
                         Box::new(Expr::token_tree(str_expressions[3].as_str().trim())),
                         Box::new(Expr::token_tree(str_expressions[4].as_str().trim())),
-                        Box::new(Expr::token_tree(str_expressions[5].as_str().trim())),
-                        s.to_string(),
+                        trimed_command_exp.to_string(),
                     ),
-
-                    _ => Expr::Empty,
+                    _ => Expr::Sequence(str_expressions.iter().map(|e| Box::new(Expr::token_tree(e.as_str().trim()))).collect::<Vec<Box<Expr>>>(), trimed_command_exp.to_string())
+                    // _ => Expr::Empty,
                 }
-            }
+            // }
         }
     }
 }
@@ -303,20 +309,21 @@ fn get_expressions(s: &str) -> Vec<String> {
             current_expr = String::new();
         } else if c == '(' {
             par_count += 1;
-            in_expr = par_count >= 1;
             current_expr.push(c);
+            in_expr = par_count >= 1;
         } else if c == ')' && in_expr {
             par_count -= 1;
             in_expr = par_count != 0;
             current_expr.push(c);
+            if !in_expr {
+                v.push(current_expr.trim().to_string());
+                current_expr = String::new();
+            }
         } else {
             current_expr.push(c);
         }
     }
     v.push(current_expr.trim().to_string());
-    for _ in 0..5 {
-        v.push(String::from(""));
-    }
     v
 }
 
