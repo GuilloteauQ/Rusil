@@ -1,1 +1,1 @@
-(for i 0 k () ())
+(let x 0 (set y x) )
