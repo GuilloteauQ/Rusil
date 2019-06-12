@@ -1,0 +1,1 @@
+((def fibo n ((let r (if (= n 0) 1 (if (= n 1) 1 (+ (call fibo (- n 1)) (call fibo (- n 2)))))) r)) (call fibo 10))

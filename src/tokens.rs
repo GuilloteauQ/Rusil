@@ -1,4 +1,5 @@
 use crate::errors::*; // type_errors::TypeError;
+use crate::functions::*;
 use crate::types::*;
 use std;
 use std::collections::HashMap;
@@ -21,6 +22,8 @@ pub(crate) enum Expr {
     Set(Box<Expr>, Box<Expr>, String),
     Sequence(Vec<Box<Expr>>, String),
     For(Box<Expr>, Box<Expr>, Box<Expr>, Box<Expr>, String),
+    Define(Box<Expr>, Vec<Box<Expr>>, Box<Expr>, String),
+    Call(Box<Expr>, Vec<Box<Expr>>, String),
     Empty,
 }
 
@@ -117,34 +120,39 @@ impl Expr {
     /// Execute the program represented by the token tree
     pub fn exec(&self) -> Result<Self, LangError> {
         let mut variables: HashMap<String, Expr> = HashMap::new();
-        self.evaluate(&mut variables)
+        let mut functions: HashMap<String, Function> = HashMap::new();
+        self.evaluate(&mut variables, &mut functions)
     }
 
-    fn evaluate(&self, mut variables: &mut HashMap<String, Expr>) -> Result<Self, LangError> {
+    fn evaluate(
+        &self,
+        mut variables: &mut HashMap<String, Expr>,
+        mut functions: &mut HashMap<String, Function>,
+    ) -> Result<Self, LangError> {
         match self {
-            Expr::Add(x, y, s) => x.evaluate(variables)?.arith_operation(
-                y.evaluate(variables)?,
+            Expr::Add(x, y, s) => x.evaluate(variables, functions)?.arith_operation(
+                y.evaluate(variables, functions)?,
                 |u, v| u + v,
                 s.to_string(),
             ),
-            Expr::Sub(x, y, s) => x.evaluate(variables)?.arith_operation(
-                y.evaluate(variables)?,
+            Expr::Sub(x, y, s) => x.evaluate(variables, functions)?.arith_operation(
+                y.evaluate(variables, functions)?,
                 |u, v| u - v,
                 s.to_string(),
             ),
-            Expr::Mul(x, y, s) => x.evaluate(variables)?.arith_operation(
-                y.evaluate(variables)?,
+            Expr::Mul(x, y, s) => x.evaluate(variables, functions)?.arith_operation(
+                y.evaluate(variables, functions)?,
                 |u, v| u * v,
                 s.to_string(),
             ),
-            Expr::Div(x, y, s) => x.evaluate(variables)?.arith_operation(
-                y.evaluate(variables)?,
+            Expr::Div(x, y, s) => x.evaluate(variables, functions)?.arith_operation(
+                y.evaluate(variables, functions)?,
                 |u, v| u / v,
                 s.to_string(),
             ),
             Expr::Equal(x, y, s) => {
-                let x_result = x.evaluate(variables)?;
-                let y_result = y.evaluate(variables)?;
+                let x_result = x.evaluate(variables, functions)?;
+                let y_result = y.evaluate(variables, functions)?;
                 if x_result.get_type() == y_result.get_type() {
                     Ok(Expr::Bool(x_result == y_result))
                 } else {
@@ -155,25 +163,25 @@ impl Expr {
                     ))
                 }
             }
-            Expr::Not(x, _s) => Ok((!x.evaluate(variables)?)?),
+            Expr::Not(x, _s) => Ok((!x.evaluate(variables, functions)?)?),
             Expr::Number(x) => Ok(Expr::Number(*x)),
             Expr::Bool(x) => Ok(Expr::Bool(*x)),
             Expr::Str(x) => {
                 let p = variables.get(x);
                 if let Some(e) = p {
-                    e.clone().evaluate(&mut variables)
+                    e.clone().evaluate(&mut variables, functions)
                 } else {
                     Ok(Expr::Str(x.to_string()))
                 }
             }
             Expr::Let(name, x, s) => {
-                let result = x.evaluate(variables)?;
+                let result = x.evaluate(variables, functions)?;
                 let var_name = name.get_str(s.to_string())?;
                 variables.insert(var_name, result);
                 Ok(Expr::Empty)
             }
             Expr::Set(name, x, s) => {
-                let result = x.evaluate(variables)?;
+                let result = x.evaluate(variables, functions)?;
                 let var_name = name.get_str(s.to_string())?;
 
                 let opt_previous = variables.insert(var_name.clone(), result);
@@ -190,7 +198,7 @@ impl Expr {
             Expr::Sequence(v, s) => {
                 let mut result = None;
                 for e in v {
-                    result = Some(e.evaluate(variables)?);
+                    result = Some(e.evaluate(variables, functions)?);
                 }
                 if result.is_none() {
                     Ok(Expr::Empty)
@@ -199,12 +207,12 @@ impl Expr {
                 }
             }
             Expr::If(b, x, y, s) => {
-                let bool_evaluated = b.evaluate(variables)?;
+                let bool_evaluated = b.evaluate(variables, functions)?;
                 if let Expr::Bool(bb) = bool_evaluated {
                     if bb {
-                        x.evaluate(variables)
+                        x.evaluate(variables, functions)
                     } else {
-                        y.evaluate(variables)
+                        y.evaluate(variables, functions)
                     }
                 } else {
                     Err(LangError::new_type_error(
@@ -222,7 +230,7 @@ impl Expr {
                 let previous_value = variables.insert(var_name.clone(), Expr::Number(inf));
                 for i in inf..sup {
                     variables.insert(var_name.clone(), Expr::Number(i));
-                    core.evaluate(variables)?;
+                    core.evaluate(variables, functions)?;
                 }
 
                 let _ = match previous_value {
@@ -230,6 +238,71 @@ impl Expr {
                     None => variables.remove(&var_name),
                 };
                 Ok(Expr::Empty)
+            }
+            Expr::Define(name, args, core, s) => {
+                let func_name = name.get_str(s.to_string())?;
+                let new_function = Function::new(
+                    func_name.clone(),
+                    args.iter()
+                        .map(|a| {
+                            a.evaluate(variables, functions)
+                                .unwrap()
+                                .get_str(s.to_string())
+                                .unwrap()
+                        })
+                        .collect(),
+                    core.clone(),
+                );
+                functions.insert(func_name, new_function);
+                Ok(Expr::Empty)
+            }
+            Expr::Call(name, args, s) => {
+                let func_name = name.get_str(s.to_string())?;
+
+                let evaluated_args: Vec<Expr> = args
+                    .iter()
+                    .map(|a| a.evaluate(&mut variables, &mut functions).unwrap())
+                    .collect();
+
+                // println!("Calling function: {}, with args: {:?}", func_name, args);
+                let function = functions.get(&func_name);
+                if function.is_none() {
+                    return Err(LangError::new_undefined_variable_error(
+                        func_name.to_string(),
+                        s.to_string(),
+                    ));
+                }
+                let mut function = function.unwrap();
+                let func_args = function.get_args();
+
+                // Store the previous values of function.args
+
+                let previous_values: Vec<Option<Expr>> = func_args
+                    .iter()
+                    .zip(evaluated_args.iter())
+                    .map(|(arg_name, arg_passed_value)| {
+                        variables.insert(arg_name.to_string(), arg_passed_value.clone())
+                    })
+                    .collect();
+
+                // Apply the function
+                let result = function
+                    .get_core()
+                    .evaluate(&mut variables, &mut functions)?;
+
+                // Restore the values
+                previous_values
+                    .iter()
+                    .zip(func_args.iter())
+                    .for_each(|(v, name)| {
+                        if v.is_some() {
+                            variables.insert(name.to_string(), v.clone().unwrap());
+                        } else {
+                            variables.remove(name);
+                        }
+                    });
+                // Return the result of the function call
+                Ok(result)
             }
         }
     }
@@ -254,7 +327,7 @@ impl Expr {
             // If it is an expression
             let str_expressions: Vec<String> =
                 get_expressions(&trimed_command_exp[1..trimed_command_exp.len() - 1]);
-            println!("EXPRESSIONS: {:?}", str_expressions);
+            // println!("EXPRESSIONS: {:?}", str_expressions);
             let command = str_expressions[0].as_str();
             // if str_expressions[0].chars().next() == Some('(') {
             //     panic!("Syntax not accepted ...");
@@ -303,6 +376,17 @@ impl Expr {
                     "set" => Expr::Set(
                         Box::new(Expr::token_tree(str_expressions[1].as_str().trim())),
                         Box::new(Expr::token_tree(str_expressions[2].as_str().trim())),
+                        s.to_string(),
+                    ),
+                    "def" => Expr::Define(
+                        Box::new(Expr::token_tree(str_expressions[1].as_str().trim())),
+                        str_expressions[2..str_expressions.len() - 1].iter().map(|e| Box::new(Expr::token_tree(e.as_str().trim()))).collect::<Vec<Box<Expr>>>(),
+                        Box::new(Expr::token_tree(str_expressions[str_expressions.len() - 1].as_str().trim())),
+                        s.to_string(),
+                    ),
+                    "call" => Expr::Call(
+                        Box::new(Expr::token_tree(str_expressions[1].as_str().trim())),
+                        str_expressions.iter().skip(2).map(|e| Box::new(Expr::token_tree(e.as_str().trim()))).collect::<Vec<Box<Expr>>>(),
                         s.to_string(),
                     ),
 
@@ -357,7 +441,9 @@ fn get_expressions(s: &str) -> Vec<String> {
             just_pushed = false;
         }
     }
-    v.push(current_expr.trim().to_string());
+    if current_expr.len() > 0 {
+        v.push(current_expr.trim().to_string());
+    }
     v
 }
 

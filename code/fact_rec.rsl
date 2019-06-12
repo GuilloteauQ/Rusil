@@ -1,0 +1,1 @@
+((def fact n ((let r (if (= n 1) 1 (* n (call fact (- n 1))))) r)) (call fact 4))
