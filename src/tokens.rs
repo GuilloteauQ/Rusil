@@ -302,7 +302,6 @@ impl Expr {
                     "set" => Expr::Set(
                         Box::new(Expr::token_tree(str_expressions[1].as_str().trim())),
                         Box::new(Expr::token_tree(str_expressions[2].as_str().trim())),
-                        Box::new(Expr::token_tree(str_expressions[3].as_str().trim())),
                         s.to_string(),
                     ),
 
