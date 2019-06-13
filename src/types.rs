@@ -6,4 +6,5 @@ pub(crate) enum Type {
     Bool,
     Str,
     Expression,
+    Var,
 }

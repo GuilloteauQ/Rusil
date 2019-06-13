@@ -23,6 +23,7 @@ pub(crate) enum Expr {
     Not(Box<Expr>, String),
     Bool(bool),
     If(Box<Expr>, Box<Expr>, Box<Expr>, String),
+    Var(String),
     Str(String),
     Let(Box<Expr>, Box<Expr>, String),
     Set(Box<Expr>, Box<Expr>, String),
@@ -30,6 +31,7 @@ pub(crate) enum Expr {
     For(Box<Expr>, Box<Expr>, Box<Expr>, Box<Expr>, String),
     Define(Box<Expr>, Vec<Box<Expr>>, Box<Expr>, String),
     Call(Box<Expr>, Vec<Box<Expr>>, String),
+    Print(Vec<Box<Expr>>),
     Empty,
 }
 
@@ -66,6 +68,7 @@ impl Expr {
         match *self {
             Expr::Number(_) => Type::Number,
             Expr::Str(_) => Type::Str,
+            Expr::Var(_) => Type::Var,
             Expr::Bool(_) => Type::Bool,
             _ => Type::Expression,
         }
@@ -103,6 +106,20 @@ impl Expr {
         } else {
             Err(LangError::new_type_error(
                 Type::Str,
+                self.get_type(),
+                expr_str,
+            ))
+        }
+    }
+
+    /// Returns the string encapsulated in the expression
+    /// If it is not a string, returns a TypeError
+    fn get_var(&self, expr_str: String) -> Result<String, LangError> {
+        if let Expr::Var(x) = self {
+            Ok(x.to_string())
+        } else {
+            Err(LangError::new_type_error(
+                Type::Var,
                 self.get_type(),
                 expr_str,
             ))
@@ -194,23 +211,24 @@ impl Expr {
             Expr::Not(x, _s) => Ok((!x.evaluate(variables, functions)?)?),
             Expr::Number(x) => Ok(Expr::Number(*x)),
             Expr::Bool(x) => Ok(Expr::Bool(*x)),
-            Expr::Str(x) => {
+            Expr::Str(x) => Ok(Expr::Str(x.to_string())),
+            Expr::Var(x) => {
                 let p = variables.get(x);
                 if let Some(e) = p {
                     e.clone().evaluate(&mut variables, functions)
                 } else {
-                    Ok(Expr::Str(x.to_string()))
+                    Ok(Expr::Var(x.to_string()))
                 }
             }
             Expr::Let(name, x, s) => {
                 let result = x.evaluate(variables, functions)?;
-                let var_name = name.get_str(s.to_string())?;
+                let var_name = name.get_var(s.to_string())?;
                 variables.insert(var_name, result);
                 Ok(Expr::Empty)
             }
             Expr::Set(name, x, s) => {
                 let result = x.evaluate(variables, functions)?;
-                let var_name = name.get_str(s.to_string())?;
+                let var_name = name.get_var(s.to_string())?;
 
                 let opt_previous = variables.insert(var_name.clone(), result);
                 if opt_previous.is_none() {
@@ -253,7 +271,7 @@ impl Expr {
             Expr::For(var, begin, end, core, s) => {
                 let inf = begin.get_num(s.to_string())?;
                 let sup = end.get_num(s.to_string())?;
-                let var_name = var.get_str(s.to_string())?;
+                let var_name = var.get_var(s.to_string())?;
 
                 let previous_value = variables.insert(var_name.clone(), Expr::Number(inf));
                 for i in inf..sup {
@@ -268,14 +286,14 @@ impl Expr {
                 Ok(Expr::Empty)
             }
             Expr::Define(name, args, core, s) => {
-                let func_name = name.get_str(s.to_string())?;
+                let func_name = name.get_var(s.to_string())?;
                 let new_function = Function::new(
                     func_name.clone(),
                     args.iter()
                         .map(|a| {
                             a.evaluate(variables, functions)
                                 .unwrap()
-                                .get_str(s.to_string())
+                                .get_var(s.to_string())
                                 .unwrap()
                         })
                         .collect(),
@@ -285,7 +303,7 @@ impl Expr {
                 Ok(Expr::Empty)
             }
             Expr::Call(name, args, s) => {
-                let func_name = name.get_str(s.to_string())?;
+                let func_name = name.get_var(s.to_string())?;
 
                 let evaluated_args: Vec<Expr> = args
                     .iter()
@@ -332,6 +350,12 @@ impl Expr {
                 // Return the result of the function call
                 Ok(result)
             }
+            Expr::Print(x) => {
+                for e in x.iter() {
+                    print!("{}", e.evaluate(variables, functions)?);
+                }
+                Ok(Expr::Empty)
+            }
         }
     }
 
@@ -345,11 +369,13 @@ impl Expr {
         }
         if trimed_command_exp.chars().next() != Some('(') {
             // If it is a number
-            let x = s.trim().parse::<i32>();
+            let x = p.trim().parse::<i32>();
             if x.is_ok() {
                 Expr::Number(x.unwrap())
+            } else if p.trim().chars().take(1).next().unwrap() == '"' {
+                Expr::Str(p[1..p.len() - 1].to_string())
             } else {
-                Expr::Str(s.to_string())
+                Expr::Var(s.to_string())
             }
         } else {
             // If it is an expression
@@ -448,6 +474,9 @@ impl Expr {
                         str_expressions.iter().skip(2).map(|e| Box::new(Expr::token_tree(e.as_str().trim()))).collect::<Vec<Box<Expr>>>(),
                         s.to_string(),
                     ),
+                    "print" => Expr::Print(
+                        str_expressions.iter().skip(1).map(|e| Box::new(Expr::token_tree(e.as_str().trim()))).collect::<Vec<Box<Expr>>>(),
+                    ),
 
                     "for" => Expr::For(
                         Box::new(Expr::token_tree(str_expressions[1].as_str().trim())),
@@ -476,9 +505,10 @@ fn get_expressions(s: &str) -> Vec<String> {
     let mut in_expr = false;
     let mut par_count = 0;
     let mut just_pushed = false;
+    let mut in_str = false;
 
     while let Some(c) = chars.next() {
-        if c == ' ' && !in_expr && !just_pushed {
+        if c == ' ' && !in_expr && !just_pushed && !in_str {
             v.push(current_expr.trim().to_string());
             current_expr = String::new();
             just_pushed = false;
@@ -495,6 +525,9 @@ fn get_expressions(s: &str) -> Vec<String> {
                 current_expr = String::new();
                 just_pushed = true;
             }
+        } else if c == '"' {
+            in_str = !in_str;
+            current_expr.push(c);
         } else {
             current_expr.push(c);
             just_pushed = false;
