@@ -1,1 +1,1 @@
-((def gcd a b ((while (!= b 0) ((let tmp b) (set b (% a b)) (set a tmp))) a)) (print "GCD = " (call gcd 6 12)))
+((def gcd a b ((while (!= b 0) ((let tmp b) (set b (% a b)) (set a tmp))) a)) (let r (call gcd ((print "Enter a: ") (input)) ((print "Enter b: ") (input)))) (print "GCD: " r))

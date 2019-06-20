@@ -4,6 +4,8 @@ use crate::types::*;
 use std;
 use std::collections::HashMap;
 use std::fmt;
+use std::io::{prelude, Write};
+use std::io::{stdin, stdout};
 use std::ops::{Add, Div, Mul, Not, Sub};
 
 #[derive(Debug, PartialEq, Clone)]
@@ -35,6 +37,7 @@ pub(crate) enum Expr {
     Define(Box<Expr>, Vec<Box<Expr>>, Box<Expr>, String),
     Call(Box<Expr>, Vec<Box<Expr>>, String),
     Print(Vec<Box<Expr>>),
+    Input,
     Empty,
 }
 
@@ -380,7 +383,18 @@ impl Expr {
                 for e in x.iter() {
                     print!("{}", e.evaluate(variables, functions)?);
                 }
+                std::io::stdout().flush().unwrap();
                 Ok(Expr::Empty)
+            }
+            Expr::Input => {
+                let mut b = String::new();
+                let _ = std::io::stdin().read_line(&mut b).unwrap();
+                let x = b.trim().parse::<i32>();
+                if x.is_ok() {
+                    Ok(Expr::Number(x.unwrap()))
+                } else {
+                    Ok(Expr::Str(b.to_string()))
+                }
             }
         }
     }
@@ -513,6 +527,7 @@ impl Expr {
                     "print" => Expr::Print(
                         str_expressions.iter().skip(1).map(|e| Box::new(Expr::token_tree(e.as_str().trim()))).collect::<Vec<Box<Expr>>>(),
                     ),
+                    "input" => Expr::Input,
                     "while" => Expr::While(
                         Box::new(Expr::token_tree(str_expressions[1].as_str().trim())),
                         Box::new(Expr::token_tree(str_expressions[2].as_str().trim())),
