@@ -12,12 +12,14 @@ pub(crate) enum Expr {
     Sub(Box<Expr>, Box<Expr>, String),
     Mul(Box<Expr>, Box<Expr>, String),
     Div(Box<Expr>, Box<Expr>, String),
+    Mod(Box<Expr>, Box<Expr>, String),
     Number(i32),
     Equal(Box<Expr>, Box<Expr>, String),
     GreaterThan(Box<Expr>, Box<Expr>, String),
     GreaterEqualThan(Box<Expr>, Box<Expr>, String),
     LessThan(Box<Expr>, Box<Expr>, String),
     LessEqualThan(Box<Expr>, Box<Expr>, String),
+    NEqual(Box<Expr>, Box<Expr>, String),
     And(Box<Expr>, Box<Expr>, String),
     Or(Box<Expr>, Box<Expr>, String),
     Not(Box<Expr>, String),
@@ -173,9 +175,19 @@ impl Expr {
                 |u, v| Expr::Number(u / v),
                 |x| x.get_num(s.to_string()),
             ),
+            Expr::Mod(x, y, s) => x.evaluate(variables, functions)?.arith_operation(
+                y.evaluate(variables, functions)?,
+                |u, v| Expr::Number(u % v),
+                |x| x.get_num(s.to_string()),
+            ),
             Expr::Equal(x, y, s) => x.evaluate(variables, functions)?.arith_operation(
                 y.evaluate(variables, functions)?,
                 |u, v| Expr::Bool(u == v),
+                |x| x.get_num(s.to_string()),
+            ),
+            Expr::NEqual(x, y, s) => x.evaluate(variables, functions)?.arith_operation(
+                y.evaluate(variables, functions)?,
+                |u, v| Expr::Bool(u != v),
                 |x| x.get_num(s.to_string()),
             ),
             Expr::GreaterThan(x, y, s) => x.evaluate(variables, functions)?.arith_operation(
@@ -368,7 +380,6 @@ impl Expr {
                 for e in x.iter() {
                     print!("{}", e.evaluate(variables, functions)?);
                 }
-                print!("\n");
                 Ok(Expr::Empty)
             }
         }
@@ -422,7 +433,17 @@ impl Expr {
                         Box::new(Expr::token_tree(str_expressions[2].as_str().trim())),
                         trimed_command_exp.to_string(),
                     ),
+                    "%" => Expr::Mod(
+                        Box::new(Expr::token_tree(str_expressions[1].as_str().trim())),
+                        Box::new(Expr::token_tree(str_expressions[2].as_str().trim())),
+                        trimed_command_exp.to_string(),
+                    ),
                     "=" => Expr::Equal(
+                        Box::new(Expr::token_tree(str_expressions[1].as_str().trim())),
+                        Box::new(Expr::token_tree(str_expressions[2].as_str().trim())),
+                        trimed_command_exp.to_string(),
+                    ),
+                    "!=" => Expr::NEqual(
                         Box::new(Expr::token_tree(str_expressions[1].as_str().trim())),
                         Box::new(Expr::token_tree(str_expressions[2].as_str().trim())),
                         trimed_command_exp.to_string(),
