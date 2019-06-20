@@ -1,14 +1,16 @@
 # Rusil
 
 
- 1) Arithmetical Operations
+ 1) [Arithmetical Operations](ari.md)
+ 
+ 2) [Variables](variables.md)
 
- 2) I/O
+ 3) [I/O](io.md)
 
- 3) If statements
+ 4) [If statements](if.md)
 
- 4) Loops
+ 5) [Loops](loops.md)
 
- 5) Functions
+ 6) [Functions](functions.md)
 
- 6) Enums
+ 7) [Enums](enums.md)
