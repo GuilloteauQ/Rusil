@@ -1,9 +1,7 @@
 * Scope variables
 
-* functions
+* User Inputs
 
-* Strings
+* Struct
 
-* print
-
-* while
+* Enum
