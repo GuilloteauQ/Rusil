@@ -1,0 +1,1 @@
+((enum days mon tue wed thu fri sat sun) (if (!= days.mon days.mon) (print "ok") (print "nok")))

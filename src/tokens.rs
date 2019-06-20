@@ -2,7 +2,7 @@ use crate::errors::*; // type_errors::TypeError;
 use crate::functions::*;
 use crate::types::*;
 use std;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::io::{prelude, Write};
 use std::io::{stdin, stdout};
@@ -10,12 +10,17 @@ use std::ops::{Add, Div, Mul, Not, Sub};
 
 #[derive(Debug, PartialEq, Clone)]
 pub(crate) enum Expr {
+    Number(i32),
+    Bool(bool),
+    Var(String),
+    Str(String),
+    EnumElement(String),
+    // ------------------------------
     Add(Box<Expr>, Box<Expr>, String),
     Sub(Box<Expr>, Box<Expr>, String),
     Mul(Box<Expr>, Box<Expr>, String),
     Div(Box<Expr>, Box<Expr>, String),
     Mod(Box<Expr>, Box<Expr>, String),
-    Number(i32),
     Equal(Box<Expr>, Box<Expr>, String),
     GreaterThan(Box<Expr>, Box<Expr>, String),
     GreaterEqualThan(Box<Expr>, Box<Expr>, String),
@@ -25,10 +30,7 @@ pub(crate) enum Expr {
     And(Box<Expr>, Box<Expr>, String),
     Or(Box<Expr>, Box<Expr>, String),
     Not(Box<Expr>, String),
-    Bool(bool),
     If(Box<Expr>, Box<Expr>, Box<Expr>, String),
-    Var(String),
-    Str(String),
     Let(Box<Expr>, Box<Expr>, String),
     Set(Box<Expr>, Box<Expr>, String),
     Sequence(Vec<Box<Expr>>, String),
@@ -37,6 +39,7 @@ pub(crate) enum Expr {
     Define(Box<Expr>, Vec<Box<Expr>>, Box<Expr>, String),
     Call(Box<Expr>, Vec<Box<Expr>>, String),
     Print(Vec<Box<Expr>>),
+    Enum(Box<Expr>, Vec<Box<Expr>>, String),
     Input,
     Empty,
 }
@@ -149,101 +152,108 @@ impl Expr {
     pub fn exec(&self) -> Result<Self, LangError> {
         let mut variables: HashMap<String, Expr> = HashMap::new();
         let mut functions: HashMap<String, Function> = HashMap::new();
-        self.evaluate(&mut variables, &mut functions)
+        let mut enums: HashMap<String, u32> = HashMap::new();
+        self.evaluate(&mut variables, &mut functions, &mut enums)
     }
 
     fn evaluate(
         &self,
         mut variables: &mut HashMap<String, Expr>,
         mut functions: &mut HashMap<String, Function>,
+        mut enums: &mut HashMap<String, u32>,
     ) -> Result<Self, LangError> {
         match self {
-            Expr::Add(x, y, s) => x.evaluate(variables, functions)?.arith_operation(
-                y.evaluate(variables, functions)?,
+            Expr::Add(x, y, s) => x.evaluate(variables, functions, enums)?.arith_operation(
+                y.evaluate(variables, functions, enums)?,
                 |u, v| Expr::Number(u + v),
                 |x| x.get_num(s.to_string()),
             ),
-            Expr::Sub(x, y, s) => x.evaluate(variables, functions)?.arith_operation(
-                y.evaluate(variables, functions)?,
+            Expr::Sub(x, y, s) => x.evaluate(variables, functions, enums)?.arith_operation(
+                y.evaluate(variables, functions, enums)?,
                 |u, v| Expr::Number(u - v),
                 |x| x.get_num(s.to_string()),
             ),
-            Expr::Mul(x, y, s) => x.evaluate(variables, functions)?.arith_operation(
-                y.evaluate(variables, functions)?,
+            Expr::Mul(x, y, s) => x.evaluate(variables, functions, enums)?.arith_operation(
+                y.evaluate(variables, functions, enums)?,
                 |u, v| Expr::Number(u * v),
                 |x| x.get_num(s.to_string()),
             ),
-            Expr::Div(x, y, s) => x.evaluate(variables, functions)?.arith_operation(
-                y.evaluate(variables, functions)?,
+            Expr::Div(x, y, s) => x.evaluate(variables, functions, enums)?.arith_operation(
+                y.evaluate(variables, functions, enums)?,
                 |u, v| Expr::Number(u / v),
                 |x| x.get_num(s.to_string()),
             ),
-            Expr::Mod(x, y, s) => x.evaluate(variables, functions)?.arith_operation(
-                y.evaluate(variables, functions)?,
+            Expr::Mod(x, y, s) => x.evaluate(variables, functions, enums)?.arith_operation(
+                y.evaluate(variables, functions, enums)?,
                 |u, v| Expr::Number(u % v),
                 |x| x.get_num(s.to_string()),
             ),
-            Expr::Equal(x, y, s) => x.evaluate(variables, functions)?.arith_operation(
-                y.evaluate(variables, functions)?,
+            Expr::Equal(x, y, s) => x.evaluate(variables, functions, enums)?.arith_operation(
+                y.evaluate(variables, functions, enums)?,
                 |u, v| Expr::Bool(u == v),
                 |x| x.get_num(s.to_string()),
             ),
-            Expr::NEqual(x, y, s) => x.evaluate(variables, functions)?.arith_operation(
-                y.evaluate(variables, functions)?,
+            Expr::NEqual(x, y, s) => x.evaluate(variables, functions, enums)?.arith_operation(
+                y.evaluate(variables, functions, enums)?,
                 |u, v| Expr::Bool(u != v),
                 |x| x.get_num(s.to_string()),
             ),
-            Expr::GreaterThan(x, y, s) => x.evaluate(variables, functions)?.arith_operation(
-                y.evaluate(variables, functions)?,
+            Expr::GreaterThan(x, y, s) => x.evaluate(variables, functions, enums)?.arith_operation(
+                y.evaluate(variables, functions, enums)?,
                 |u, v| Expr::Bool(u > v),
                 |x| x.get_num(s.to_string()),
             ),
-            Expr::LessThan(x, y, s) => x.evaluate(variables, functions)?.arith_operation(
-                y.evaluate(variables, functions)?,
+            Expr::LessThan(x, y, s) => x.evaluate(variables, functions, enums)?.arith_operation(
+                y.evaluate(variables, functions, enums)?,
                 |u, v| Expr::Bool(u < v),
                 |x| x.get_num(s.to_string()),
             ),
-            Expr::GreaterEqualThan(x, y, s) => x.evaluate(variables, functions)?.arith_operation(
-                y.evaluate(variables, functions)?,
-                |u, v| Expr::Bool(u >= v),
-                |x| x.get_num(s.to_string()),
-            ),
-            Expr::LessEqualThan(x, y, s) => x.evaluate(variables, functions)?.arith_operation(
-                y.evaluate(variables, functions)?,
-                |u, v| Expr::Bool(u <= v),
-                |x| x.get_num(s.to_string()),
-            ),
-            Expr::And(x, y, s) => x.evaluate(variables, functions)?.arith_operation(
-                y.evaluate(variables, functions)?,
+            Expr::GreaterEqualThan(x, y, s) => {
+                x.evaluate(variables, functions, enums)?.arith_operation(
+                    y.evaluate(variables, functions, enums)?,
+                    |u, v| Expr::Bool(u >= v),
+                    |x| x.get_num(s.to_string()),
+                )
+            }
+            Expr::LessEqualThan(x, y, s) => {
+                x.evaluate(variables, functions, enums)?.arith_operation(
+                    y.evaluate(variables, functions, enums)?,
+                    |u, v| Expr::Bool(u <= v),
+                    |x| x.get_num(s.to_string()),
+                )
+            }
+            Expr::And(x, y, s) => x.evaluate(variables, functions, enums)?.arith_operation(
+                y.evaluate(variables, functions, enums)?,
                 |u, v| Expr::Bool(u && v),
                 |x| x.get_bool(s.to_string()),
             ),
-            Expr::Or(x, y, s) => x.evaluate(variables, functions)?.arith_operation(
-                y.evaluate(variables, functions)?,
+            Expr::Or(x, y, s) => x.evaluate(variables, functions, enums)?.arith_operation(
+                y.evaluate(variables, functions, enums)?,
                 |u, v| Expr::Bool(u || v),
                 |x| x.get_bool(s.to_string()),
             ),
 
-            Expr::Not(x, _s) => Ok((!x.evaluate(variables, functions)?)?),
+            Expr::Not(x, _s) => Ok((!x.evaluate(variables, functions, enums)?)?),
             Expr::Number(x) => Ok(Expr::Number(*x)),
             Expr::Bool(x) => Ok(Expr::Bool(*x)),
             Expr::Str(x) => Ok(Expr::Str(x.to_string())),
             Expr::Var(x) => {
                 let p = variables.get(x);
                 if let Some(e) = p {
-                    e.clone().evaluate(&mut variables, functions)
+                    e.clone()
+                        .evaluate(&mut variables, &mut functions, &mut enums)
                 } else {
                     Ok(Expr::Var(x.to_string()))
                 }
             }
             Expr::Let(name, x, s) => {
-                let result = x.evaluate(variables, functions)?;
+                let result = x.evaluate(variables, functions, enums)?;
                 let var_name = name.get_var(s.to_string())?;
                 variables.insert(var_name, result);
                 Ok(Expr::Empty)
             }
             Expr::Set(name, x, s) => {
-                let result = x.evaluate(variables, functions)?;
+                let result = x.evaluate(variables, functions, enums)?;
                 let var_name = name.get_var(s.to_string())?;
 
                 let opt_previous = variables.insert(var_name.clone(), result);
@@ -260,7 +270,7 @@ impl Expr {
             Expr::Sequence(v, s) => {
                 let mut result = None;
                 for e in v {
-                    result = Some(e.evaluate(variables, functions)?);
+                    result = Some(e.evaluate(variables, functions, enums)?);
                 }
                 if result.is_none() {
                     Ok(Expr::Empty)
@@ -269,12 +279,12 @@ impl Expr {
                 }
             }
             Expr::If(b, x, y, s) => {
-                let bool_evaluated = b.evaluate(variables, functions)?;
+                let bool_evaluated = b.evaluate(variables, functions, enums)?;
                 if let Expr::Bool(bb) = bool_evaluated {
                     if bb {
-                        x.evaluate(variables, functions)
+                        x.evaluate(variables, functions, enums)
                     } else {
-                        y.evaluate(variables, functions)
+                        y.evaluate(variables, functions, enums)
                     }
                 } else {
                     Err(LangError::new_type_error(
@@ -292,7 +302,7 @@ impl Expr {
                 let previous_value = variables.insert(var_name.clone(), Expr::Number(inf));
                 for i in inf..sup {
                     variables.insert(var_name.clone(), Expr::Number(i));
-                    core.evaluate(variables, functions)?;
+                    core.evaluate(variables, functions, enums)?;
                 }
 
                 let _ = match previous_value {
@@ -303,12 +313,12 @@ impl Expr {
             }
             Expr::While(bool_exp, core, s) => {
                 let mut bool_val = bool_exp
-                    .evaluate(variables, functions)?
+                    .evaluate(variables, functions, enums)?
                     .get_bool(s.to_string())?;
                 while bool_val {
-                    core.evaluate(&mut variables, &mut functions)?;
+                    core.evaluate(&mut variables, &mut functions, &mut enums)?;
                     bool_val = bool_exp
-                        .evaluate(variables, functions)?
+                        .evaluate(variables, functions, enums)?
                         .get_bool(s.to_string())?;
                 }
                 Ok(Expr::Empty)
@@ -320,7 +330,7 @@ impl Expr {
                     func_name.clone(),
                     args.iter()
                         .map(|a| {
-                            a.evaluate(variables, functions)
+                            a.evaluate(variables, functions, enums)
                                 .unwrap()
                                 .get_var(s.to_string())
                                 .unwrap()
@@ -336,7 +346,10 @@ impl Expr {
 
                 let evaluated_args: Vec<Expr> = args
                     .iter()
-                    .map(|a| a.evaluate(&mut variables, &mut functions).unwrap())
+                    .map(|a| {
+                        a.evaluate(&mut variables, &mut functions, &mut enums)
+                            .unwrap()
+                    })
                     .collect();
 
                 // println!("Calling function: {}, with args: {:?}", func_name, args);
@@ -361,9 +374,10 @@ impl Expr {
                     .collect();
 
                 // Apply the function
-                let result = function
-                    .get_core()
-                    .evaluate(&mut variables, &mut functions)?;
+                let result =
+                    function
+                        .get_core()
+                        .evaluate(&mut variables, &mut functions, &mut enums)?;
 
                 // Restore the values
                 previous_values
@@ -381,7 +395,7 @@ impl Expr {
             }
             Expr::Print(x) => {
                 for e in x.iter() {
-                    print!("{}", e.evaluate(variables, functions)?);
+                    print!("{}", e.evaluate(variables, functions, enums)?);
                 }
                 std::io::stdout().flush().unwrap();
                 Ok(Expr::Empty)
@@ -396,6 +410,22 @@ impl Expr {
                     Ok(Expr::Str(b.to_string()))
                 }
             }
+            Expr::Enum(enum_name, names, s) => {
+                let str_enum_name = enum_name.get_var(s.to_string())?;
+                for e in names.iter() {
+                    let x = format!("{}.{}", str_enum_name, e.get_var(s.to_string())?);
+                    let size = enums.len();
+                    enums.insert(x, size as u32);
+                }
+                Ok(Expr::Empty)
+            }
+            Expr::EnumElement(x) => match enums.get(x) {
+                Some(e) => Ok(Expr::Number(e.clone() as i32)),
+                None => Err(LangError::new_undefined_variable_error(
+                    x.to_string(),
+                    "".to_string(),
+                )),
+            },
         }
     }
 
@@ -409,6 +439,9 @@ impl Expr {
         }
         if trimed_command_exp.chars().next() != Some('(') {
             // If it is a number
+            if p.contains(".") {
+                return Expr::EnumElement(s.to_string());
+            }
             let x = p.trim().parse::<i32>();
             if x.is_ok() {
                 Expr::Number(x.unwrap())
@@ -524,6 +557,12 @@ impl Expr {
                         str_expressions.iter().skip(2).map(|e| Box::new(Expr::token_tree(e.as_str().trim()))).collect::<Vec<Box<Expr>>>(),
                         s.to_string(),
                     ),
+                    "enum" => Expr::Enum(
+                        Box::new(Expr::token_tree(str_expressions[1].as_str().trim())),
+                        str_expressions.iter().skip(2).map(|e| Box::new(Expr::token_tree(e.as_str().trim()))).collect::<Vec<Box<Expr>>>(),
+                        s.to_string(),
+                    ),
+
                     "print" => Expr::Print(
                         str_expressions.iter().skip(1).map(|e| Box::new(Expr::token_tree(e.as_str().trim()))).collect::<Vec<Box<Expr>>>(),
                     ),
@@ -533,7 +572,6 @@ impl Expr {
                         Box::new(Expr::token_tree(str_expressions[2].as_str().trim())),
                         trimed_command_exp.to_string(),
                     ),
-
                     "for" => Expr::For(
                         Box::new(Expr::token_tree(str_expressions[1].as_str().trim())),
                         Box::new(Expr::token_tree(str_expressions[2].as_str().trim())),
