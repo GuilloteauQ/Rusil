@@ -29,6 +29,7 @@ pub(crate) enum Expr {
     Set(Box<Expr>, Box<Expr>, String),
     Sequence(Vec<Box<Expr>>, String),
     For(Box<Expr>, Box<Expr>, Box<Expr>, Box<Expr>, String),
+    While(Box<Expr>, Box<Expr>, String),
     Define(Box<Expr>, Vec<Box<Expr>>, Box<Expr>, String),
     Call(Box<Expr>, Vec<Box<Expr>>, String),
     Print(Vec<Box<Expr>>),
@@ -285,6 +286,19 @@ impl Expr {
                 };
                 Ok(Expr::Empty)
             }
+            Expr::While(bool_exp, core, s) => {
+                let mut bool_val = bool_exp
+                    .evaluate(variables, functions)?
+                    .get_bool(s.to_string())?;
+                while bool_val {
+                    core.evaluate(&mut variables, &mut functions)?;
+                    bool_val = bool_exp
+                        .evaluate(variables, functions)?
+                        .get_bool(s.to_string())?;
+                }
+                Ok(Expr::Empty)
+            }
+
             Expr::Define(name, args, core, s) => {
                 let func_name = name.get_var(s.to_string())?;
                 let new_function = Function::new(
@@ -354,6 +368,7 @@ impl Expr {
                 for e in x.iter() {
                     print!("{}", e.evaluate(variables, functions)?);
                 }
+                print!("\n");
                 Ok(Expr::Empty)
             }
         }
@@ -476,6 +491,11 @@ impl Expr {
                     ),
                     "print" => Expr::Print(
                         str_expressions.iter().skip(1).map(|e| Box::new(Expr::token_tree(e.as_str().trim()))).collect::<Vec<Box<Expr>>>(),
+                    ),
+                    "while" => Expr::While(
+                        Box::new(Expr::token_tree(str_expressions[1].as_str().trim())),
+                        Box::new(Expr::token_tree(str_expressions[2].as_str().trim())),
+                        trimed_command_exp.to_string(),
                     ),
 
                     "for" => Expr::For(
