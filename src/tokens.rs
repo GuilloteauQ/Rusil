@@ -14,7 +14,7 @@ pub(crate) enum Expr {
     Bool(bool),
     Var(String),
     Str(String),
-    EnumElement,
+    EnumElement(String),
     // ------------------------------
     Add(Box<Expr>, Box<Expr>, String),
     Sub(Box<Expr>, Box<Expr>, String),
