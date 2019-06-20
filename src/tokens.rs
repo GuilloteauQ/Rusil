@@ -10,12 +10,17 @@ use std::ops::{Add, Div, Mul, Not, Sub};
 
 #[derive(Debug, PartialEq, Clone)]
 pub(crate) enum Expr {
+    Number(i32),
+    Bool(bool),
+    Var(String),
+    Str(String),
+    EnumElement,
+    // ------------------------------
     Add(Box<Expr>, Box<Expr>, String),
     Sub(Box<Expr>, Box<Expr>, String),
     Mul(Box<Expr>, Box<Expr>, String),
     Div(Box<Expr>, Box<Expr>, String),
     Mod(Box<Expr>, Box<Expr>, String),
-    Number(i32),
     Equal(Box<Expr>, Box<Expr>, String),
     GreaterThan(Box<Expr>, Box<Expr>, String),
     GreaterEqualThan(Box<Expr>, Box<Expr>, String),
@@ -25,10 +30,7 @@ pub(crate) enum Expr {
     And(Box<Expr>, Box<Expr>, String),
     Or(Box<Expr>, Box<Expr>, String),
     Not(Box<Expr>, String),
-    Bool(bool),
     If(Box<Expr>, Box<Expr>, Box<Expr>, String),
-    Var(String),
-    Str(String),
     Let(Box<Expr>, Box<Expr>, String),
     Set(Box<Expr>, Box<Expr>, String),
     Sequence(Vec<Box<Expr>>, String),
@@ -37,6 +39,7 @@ pub(crate) enum Expr {
     Define(Box<Expr>, Vec<Box<Expr>>, Box<Expr>, String),
     Call(Box<Expr>, Vec<Box<Expr>>, String),
     Print(Vec<Box<Expr>>),
+    Enum(Box<Expr>, Vec<Box<Expt>>, String),
     Input,
     Empty,
 }
@@ -396,6 +399,15 @@ impl Expr {
                     Ok(Expr::Str(b.to_string()))
                 }
             }
+            Expr::Enum(enum_name, names, s) => {
+                let str_enum_name = enum_name.get_str(s.to_string())?;
+                for e in names.iter() {
+                    let x = format!("{}.{}", str_enum_name, e.get_str(s.to_string()));
+                    // TODO: HashSet, HashMap ?
+                    // TODO: Push
+                }
+                Ok(Expr::Empty)
+            }
         }
     }
 
@@ -524,6 +536,12 @@ impl Expr {
                         str_expressions.iter().skip(2).map(|e| Box::new(Expr::token_tree(e.as_str().trim()))).collect::<Vec<Box<Expr>>>(),
                         s.to_string(),
                     ),
+                    "enum" => Expr::Enum(
+                        Box::new(Expr::token_tree(str_expressions[1].as_str().trim())),
+                        str_expressions.iter().skip(2).map(|e| Box::new(Expr::token_tree(e.as_str().trim()))).collect::<Vec<Box<Expr>>>(),
+                        s.to_string(),
+                    ),
+
                     "print" => Expr::Print(
                         str_expressions.iter().skip(1).map(|e| Box::new(Expr::token_tree(e.as_str().trim()))).collect::<Vec<Box<Expr>>>(),
                     ),
@@ -533,7 +551,6 @@ impl Expr {
                         Box::new(Expr::token_tree(str_expressions[2].as_str().trim())),
                         trimed_command_exp.to_string(),
                     ),
-
                     "for" => Expr::For(
                         Box::new(Expr::token_tree(str_expressions[1].as_str().trim())),
                         Box::new(Expr::token_tree(str_expressions[2].as_str().trim())),
