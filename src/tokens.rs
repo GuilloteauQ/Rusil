@@ -40,6 +40,9 @@ pub(crate) enum Expr {
     Call(Box<Expr>, Vec<Box<Expr>>, String),
     Print(Vec<Box<Expr>>),
     Enum(Box<Expr>, Vec<Box<Expr>>, String),
+    Vector(Vec<Box<Expr>>),
+    Push(Box<Expr>, Box<Expr>, String), // Push an element to the vector
+    Get(Box<Expr>, Box<Expr>, String),  // get the element at a given position
     Input,
     Empty,
 }
@@ -79,6 +82,7 @@ impl Expr {
             Expr::Str(_) => Type::Str,
             Expr::Var(_) => Type::Var,
             Expr::Bool(_) => Type::Bool,
+            Expr::Vector(_) => Type::Vector,
             _ => Type::Expression,
         }
     }
@@ -129,6 +133,20 @@ impl Expr {
         } else {
             Err(LangError::new_type_error(
                 Type::Var,
+                self.get_type(),
+                expr_str,
+            ))
+        }
+    }
+
+    /// Returns the string encapsulated in the expression
+    /// If it is not a vector, returns a TypeError
+    fn get_vec(&self, expr_str: String) -> Result<Vec<Box<Expr>>, LangError> {
+        if let Expr::Vector(v) = self {
+            Ok(v.to_vec())
+        } else {
+            Err(LangError::new_type_error(
+                Type::Vector,
                 self.get_type(),
                 expr_str,
             ))
@@ -426,6 +444,54 @@ impl Expr {
                     "".to_string(),
                 )),
             },
+            Expr::Vector(v) => {
+                let mut vec: Vec<Box<Expr>> = Vec::new();
+                for e in v.iter() {
+                    vec.push(Box::new(e.evaluate(
+                        &mut variables,
+                        &mut functions,
+                        &mut enums,
+                    )?));
+                }
+                Ok(Expr::Vector(vec))
+            }
+            Expr::Push(vec_name, e, s) => {
+                let name = vec_name.get_var(s.to_string())?;
+                let vec = variables.get(&name.to_string());
+                if vec.is_none() {
+                    return Err(LangError::new_undefined_variable_error(
+                        name.to_string(),
+                        s.to_string(),
+                    ));
+                }
+                let mut v = vec.unwrap().get_vec(s.to_string())?;
+                v.push(Box::new(e.evaluate(
+                    &mut variables,
+                    &mut functions,
+                    &mut enums,
+                )?));
+                variables.insert(name.to_string(), Expr::Vector(v));
+                Ok(Expr::Empty)
+            }
+            Expr::Get(vec_name, expr_index, s) => {
+                let name = vec_name.get_var(s.to_string())?;
+                let vec = variables.get(&name.to_string());
+                if vec.is_none() {
+                    return Err(LangError::new_undefined_variable_error(
+                        name.to_string(),
+                        s.to_string(),
+                    ));
+                }
+                let mut v = vec.unwrap().get_vec(s.to_string())?;
+                let index = expr_index
+                    .evaluate(&mut variables, &mut functions, &mut enums)?
+                    .get_num(s.to_string())? as usize;
+                if index >= v.len() {
+                    Err(LangError::new_oob_error(v.len(), index, s.to_string()))
+                } else {
+                    Ok(*(v[index].clone()))
+                }
+            }
         }
     }
 
@@ -577,6 +643,19 @@ impl Expr {
                         Box::new(Expr::token_tree(str_expressions[2].as_str().trim())),
                         Box::new(Expr::token_tree(str_expressions[3].as_str().trim())),
                         Box::new(Expr::token_tree(str_expressions[4].as_str().trim())),
+                        trimed_command_exp.to_string(),
+                    ),
+                    "vec" => Expr::Vector(
+                        str_expressions.iter().skip(1).map(|e| Box::new(Expr::token_tree(e.as_str().trim()))).collect::<Vec<Box<Expr>>>(),
+                    ),
+                    "push" => Expr::Push(
+                        Box::new(Expr::token_tree(str_expressions[1].as_str().trim())),
+                        Box::new(Expr::token_tree(str_expressions[2].as_str().trim())),
+                        trimed_command_exp.to_string(),
+                    ),
+                    "get" => Expr::Get(
+                        Box::new(Expr::token_tree(str_expressions[1].as_str().trim())),
+                        Box::new(Expr::token_tree(str_expressions[2].as_str().trim())),
                         trimed_command_exp.to_string(),
                     ),
                     _ => Expr::Sequence(str_expressions.iter().map(|e| Box::new(Expr::token_tree(e.as_str().trim()))).collect::<Vec<Box<Expr>>>(), trimed_command_exp.to_string())

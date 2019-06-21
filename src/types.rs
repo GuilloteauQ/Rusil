@@ -7,4 +7,5 @@ pub(crate) enum Type {
     Str,
     Expression,
     Var,
+    Vector,
 }
